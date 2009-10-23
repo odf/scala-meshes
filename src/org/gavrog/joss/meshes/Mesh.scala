@@ -240,7 +240,7 @@ object Mesh {
   }
 
   def matchTopologies(ch1: Chamber, ch2: Chamber,
-                      uvs: Boolean): Map[Chamber, Chamber] = {
+                      uvs: Boolean): Option[Map[Chamber, Chamber]] = {
     val seen1 = new HashSet[Chamber]
     val seen2 = new HashSet[Chamber]
     val queue = new Queue[(Chamber, Chamber)]
@@ -256,12 +256,12 @@ object Mesh {
     while (queue.length > 0) {
       val (d1, d2) = queue.dequeue
       for ((e1, e2) <- neighbors(d1).zip(neighbors(d2))) {
-        if ((e1 == null) != (e2 == null)) return null
+        if ((e1 == null) != (e2 == null)) return None
         if (e1 != null) {
-	        if (seen1(e1) != seen2(e2)) return null
-	        if (e1.cell.getClass != e2.cell.getClass) return null
+	        if (seen1(e1) != seen2(e2)) return None
+	        if (e1.cell.getClass != e2.cell.getClass) return None
 	        if (seen1(e1)) {
-	          if (map(e1) != e2) return null
+	          if (map(e1) != e2) return None
 	        } else {
 	          queue += (e1, e2)
 	          seen1 += e1
@@ -271,7 +271,7 @@ object Mesh {
          }
       }
     }
-    map
+    Some(map)
   }
   
   def distance[T <: { def x: Double; def y: Double; def z: Double }](
@@ -305,52 +305,44 @@ object Mesh {
   }
 
   //TODO avoid code duplication in the following
-  def allMatches(c1: Component, c2: Component): Seq[Map[Chamber, Chamber]] = {
-    val result = new ArrayBuffer[Map[Chamber, Chamber]]
-    if (c1.chambers.size != c2.chambers.size) return result
-    
-    val degree = new HashMap[Vertex, Int]
-    val count = new HashMap[Int, Int]
-    for (v <- c1.vertices) {
-      degree(v) = v.degree
-      count(degree(v)) = count.getOrElse(degree(v), 0) + 1
-    }
-    for (v <- c2.vertices) degree(v) = v.degree
-
-    val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
-
-    val ch1 = c1.chambers.find(ch => degree(ch.vertex) == bestD).get
-    for (ch2 <- c2.chambers if degree(ch2.vertex) == bestD)
-      matchTopologies(ch1, ch2, false) match {
-        case null => ()
-        case map  => result += map
+  def allMatches(c1: Component, c2: Component): Stream[Map[Chamber, Chamber]] = {
+    if (c1.chambers.size != c2.chambers.size) Stream.empty
+    else {
+      val degree = new HashMap[Vertex, Int]
+      val count = new HashMap[Int, Int]
+      for (v <- c1.vertices) {
+        degree(v) = v.degree
+        count(degree(v)) = count.getOrElse(degree(v), 0) + 1
       }
-    
-    result
+      for (v <- c2.vertices) degree(v) = v.degree
+
+      val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
+
+      val ch1 = c1.chambers.find(ch => degree(ch.vertex) == bestD).get
+      for { ch2 <- c2.chambers.toStream if degree(ch2.vertex) == bestD
+    	    map <- matchTopologies(ch1, ch2, false) }
+        yield map
+    }
   }
   
-  def allMatches(c1: Chart, c2: Chart): Seq[Map[Chamber, Chamber]] = {
-    val result = new ArrayBuffer[Map[Chamber, Chamber]]
-    if (c1.chambers.size != c2.chambers.size) return result
-    
-    val degree = new HashMap[TextureVertex, Int]
-    val count = new HashMap[Int, Int] { this(0) = c1.chambers.size }
-    for (t <- c1.vertices) {
-      degree(t) = if (t.onBorder) t.degree else 0
-      count(degree(t)) = count.getOrElse(degree(t), 0) + 1
-    }
-    for (t <- c2.vertices) degree(t) = if (t.onBorder) t.degree else 0
-    
-    val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
-
-    val ch1 = c1.chambers.find(ch => degree(ch.tVertex) == bestD).get
-    for (ch2 <- c2.chambers if degree(ch2.tVertex) == bestD)
-      matchTopologies(ch1, ch2, false) match {
-        case null => ()
-        case map  => result += map
+  def allMatches(c1: Chart, c2: Chart): Stream[Map[Chamber, Chamber]] = {
+    if (c1.chambers.size != c2.chambers.size) Stream.empty
+    else {
+      val degree = new HashMap[TextureVertex, Int]
+      val count = new HashMap[Int, Int] { this(0) = c1.chambers.size }
+      for (t <- c1.vertices) {
+        degree(t) = if (t.onBorder) t.degree else 0
+        count(degree(t)) = count.getOrElse(degree(t), 0) + 1
       }
+      for (t <- c2.vertices) degree(t) = if (t.onBorder) t.degree else 0
     
-    result
+      val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
+
+      val ch1 = c1.chambers.find(ch => degree(ch.tVertex) == bestD).get
+      for { ch2 <- c2.chambers.toStream if degree(ch2.tVertex) == bestD
+            map <- matchTopologies(ch1, ch2, true) }
+      	yield map
+    }
   }
 }
 
@@ -904,7 +896,7 @@ class Mesh extends MessageSource {
   
   def withDonorData(donor: Mesh, f: Map[Chamber, Chamber] => boolean) = {
     val result = clone
-    val originals = result.components
+    var originals = Set() ++ result.components
     
     for (comp <- donor.components) {
       send("Matching donor component with %d chambers..."
@@ -933,6 +925,7 @@ class Mesh extends MessageSource {
       if (map != null) {
         send("Match found. Applying donor data...")
         f(map)
+        originals -= image
       }
     }
     result
