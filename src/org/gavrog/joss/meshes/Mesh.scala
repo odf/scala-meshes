@@ -289,7 +289,7 @@ object Mesh {
   }
   
   def closest[T <: { def x: Double; def y: Double; def z: Double }](
-    maps: Seq[Map[Chamber, Chamber]], v: Chamber => T) =
+    maps: Iterator[Map[Chamber, Chamber]], v: Chamber => T) =
   {
     var best: Map[Chamber, Chamber] = null
     var dist = Double.MaxValue
@@ -305,8 +305,8 @@ object Mesh {
   }
 
   //TODO avoid code duplication in the following
-  def allMatches(c1: Component, c2: Component): Stream[Map[Chamber, Chamber]] = {
-    if (c1.chambers.size != c2.chambers.size) Stream.empty
+  def allMatches(c1: Component, c2: Component): Iterator[Map[Chamber, Chamber]] = {
+    if (c1.chambers.size != c2.chambers.size) Iterator.empty
     else {
       val degree = new HashMap[Vertex, Int]
       val count = new HashMap[Int, Int]
@@ -319,14 +319,14 @@ object Mesh {
       val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
 
       val ch1 = c1.chambers.find(ch => degree(ch.vertex) == bestD).get
-      for { ch2 <- c2.chambers.toStream if degree(ch2.vertex) == bestD
-    	    map <- matchTopologies(ch1, ch2, false) }
+      for { ch2 <- c2.chambers.elements if degree(ch2.vertex) == bestD
+    	    map <- matchTopologies(ch1, ch2, false).elements }
         yield map
     }
   }
   
-  def allMatches(c1: Chart, c2: Chart): Stream[Map[Chamber, Chamber]] = {
-    if (c1.chambers.size != c2.chambers.size) Stream.empty
+  def allMatches(c1: Chart, c2: Chart): Iterator[Map[Chamber, Chamber]] = {
+    if (c1.chambers.size != c2.chambers.size) Iterator.empty
     else {
       val degree = new HashMap[TextureVertex, Int]
       val count = new HashMap[Int, Int] { this(0) = c1.chambers.size }
@@ -339,8 +339,8 @@ object Mesh {
       val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
 
       val ch1 = c1.chambers.find(ch => degree(ch.tVertex) == bestD).get
-      for { ch2 <- c2.chambers.toStream if degree(ch2.tVertex) == bestD
-            map <- matchTopologies(ch1, ch2, true) }
+      for { ch2 <- c2.chambers.elements if degree(ch2.tVertex) == bestD
+            map <- matchTopologies(ch1, ch2, true).elements }
       	yield map
     }
   }
