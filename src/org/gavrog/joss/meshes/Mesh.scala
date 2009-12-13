@@ -524,7 +524,7 @@ class Mesh extends MessageSource {
     new Mesh(Source.fromString(w.toString))
   }
 
-  private def addChamber(v: Vertex, f: Cell) = new Chamber {
+  private class MeshChamber(v: Vertex, f: Cell) extends Chamber {
     private var _vertex = v
     private var _cell   = f
 
@@ -570,6 +570,8 @@ class Mesh extends MessageSource {
     if (_chamber_at_cell.get(f)   == None) _chamber_at_cell(f)   = this
   }
   
+  private def addChamber(v: Vertex, f: Cell) = new MeshChamber(v, f)
+  
   def numberOfChambers = _chambers.size
   def chambers         = _chambers.elements
   def hardChambers     = {
@@ -587,9 +589,7 @@ class Mesh extends MessageSource {
     })
   }
   
-  def addVertex(p: Vec3): Vertex = addVertex(p.x, p.y, p.z)
-  
-  def addVertex(_x: Double, _y: Double, _z: Double) = new Vertex {
+  private class MeshVertex(x: Double, y: Double, z: Double) extends Vertex {
     val mesh = Mesh.this
     val nr = numberOfVertices + 1
     
@@ -599,8 +599,13 @@ class Mesh extends MessageSource {
     def pos_=(p: Vec3) { vertex_position(this) = p }
     
     _vertices += this
-    pos = (_x, _y, _z)
+    pos = (x, y, z)
   }
+  
+  def addVertex(p: Vec3): Vertex = addVertex(p.x, p.y, p.z)
+  
+  def addVertex(x: Double, y: Double, z: Double): Vertex =
+    new MeshVertex(x, y, z)
   
   def numberOfVertices = _vertices.size
   def vertices         = _vertices.elements
@@ -609,9 +614,7 @@ class Mesh extends MessageSource {
   
   def clearTextureVertices = _texverts.clear
 
-  def addTextureVertex(p: Vec2): TextureVertex = addTextureVertex(p.x, p.y)
-  
-  def addTextureVertex(_x: Double, _y: Double) = new TextureVertex {
+  private class MeshTextureVertex(x: Double, y: Double) extends TextureVertex {
     val mesh = Mesh.this
     val nr = numberOfTextureVertices + 1
     
@@ -626,9 +629,14 @@ class Mesh extends MessageSource {
     def pos_=(p: Vec2) { texture_position(this) = p }
 
     _texverts += this
-    pos = (_x, _y)
+    pos = (x, y)
   }
-
+  
+  def addTextureVertex(p: Vec2): TextureVertex = addTextureVertex(p.x, p.y)
+  
+  def addTextureVertex(x: Double, y: Double): TextureVertex =
+    new MeshTextureVertex(x, y)
+  
   def numberOfTextureVertices = _texverts.size
   def textureVertices         = _texverts.elements
   def textureVertex(n: Int)  =
@@ -636,9 +644,7 @@ class Mesh extends MessageSource {
   
   def clearNormals = _normals.clear
   
-  def addNormal(p: Vec3): Normal = addNormal(p.x, p.y, p.z)
-  
-  def addNormal(_x: Double, _y: Double, _z: Double) = new Normal {
+  private class MeshNormal(x: Double, y: Double, z: Double) extends Normal {
     val mesh = Mesh.this
     val nr = numberOfNormals + 1
     
@@ -653,8 +659,13 @@ class Mesh extends MessageSource {
     def value_=(p: Vec3) { normal_value(this) = p }
 
     _normals += this
-    value = (_x, _y, _z)
+    value = (x, y, z)
   }
+  
+  def addNormal(p: Vec3): Normal = addNormal(p.x, p.y, p.z)
+  
+  def addNormal(x: Double, y: Double, z: Double): Normal =
+    new MeshNormal(x, y, z)
   
   def numberOfNormals  = _normals.size
   def normals          = _normals.elements
@@ -694,21 +705,23 @@ class Mesh extends MessageSource {
   def materials         = _mats.values
   def clearMaterials    = _mats.clear
 
-  def addFace(verts   : Seq[Int], tverts  : Seq[Int], normvecs: Seq[Int]) = {
-    val f = new Face {
-      val mesh = Mesh.this
-      def chamber = _chamber_at_cell(this)
+  private class MeshFace extends Face {
+	val mesh = Mesh.this
+	def chamber = _chamber_at_cell(this)
       
-      def obj            = _object_for_face(this)
-      def group          = _group_for_face(this)
-      def material       = _material_for_face(this)
-      def smoothingGroup = _smoothing_group_for_face(this)
+	def obj            = _object_for_face(this)
+	def group          = _group_for_face(this)
+	def material       = _material_for_face(this)
+	def smoothingGroup = _smoothing_group_for_face(this)
       
-      def obj_=(o: Object)         { _object_for_face(this) = o }
-      def group_=(g: Group)        { _group_for_face(this) = g }
-      def material_=(m: Material)  { _material_for_face(this) = m }
-      def smoothingGroup_=(s: Int) { _smoothing_group_for_face(this) = s }
-    }
+	def obj_=(o: Object)         { _object_for_face(this) = o }
+	def group_=(g: Group)        { _group_for_face(this) = g }
+	def material_=(m: Material)  { _material_for_face(this) = m }
+	def smoothingGroup_=(s: Int) { _smoothing_group_for_face(this) = s }
+  }
+  
+  def addFace(verts: Seq[Int], tverts: Seq[Int], normvecs: Seq[Int]): Face = {
+    val f = new MeshFace
     
     val n = verts.length
     val chambers = new ArrayBuffer[Chamber]
