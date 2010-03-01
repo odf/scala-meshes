@@ -944,18 +944,19 @@ class Mesh extends MessageSource {
     result
   }
   
-  def withMorphApplied(donor: Mesh) =
-    withDonorData(donor, map => {
-      for ((c, d) <- map) d.vertex.pos = c.vertex.pos
-      true
-    })
+  def withMorphApplied(donor: Mesh) = withWeightedPositions(donor, 0, 1)
   
   def withMorphAtStrength(donor: Mesh, f: Double) =
+	withWeightedPositions(donor, 1 - f, f)
+
+  def withDeltas(donor: Mesh) = withWeightedPositions(donor, -1, 1)
+  
+  def withWeightedPositions(donor: Mesh, w1: Double, w2: Double) =
     withDonorData(donor, map => {
       var seen = new HashSet[Vertex]
       for ((c, d) <- map) {
         if (!seen(d.vertex)) {
-          d.vertex.pos = (1 - f) * d.vertex.pos + f * c.vertex.pos
+          d.vertex.pos = w1 * d.vertex.pos + w2 * c.vertex.pos
           seen += d.vertex
         }
       }
