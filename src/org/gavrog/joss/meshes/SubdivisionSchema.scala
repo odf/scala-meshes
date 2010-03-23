@@ -14,10 +14,12 @@ class SubdivisionSchema(base: Mesh) {
     
     // -- create edge centers
     val ch2ev = Map[Mesh.Chamber, Mesh.Vertex]() ++ (
-      for { e <- base.edges
-            c = e.from.chamber
-            z = subD.addVertex((c.start.pos + c.end.pos) / 2)
-            d <- List(c, c.s0, c.s2, c.s0.s2).elements }
+      for {
+        e <- base.edges
+        c = e.from.chamber
+        z = subD.addVertex((c.start.pos + c.end.pos) / 2)
+        d <- List(c, c.s0, c.s2, c.s0.s2).elements
+      }
       	yield (d -> z)
     )
     
@@ -56,32 +58,29 @@ class SubdivisionSchema(base: Mesh) {
     
     // -- fill holes and flag border vertices
     subD.fixHoles
-    var onBorder = Set[Mesh.Vertex]()
-    for (c <- subD.hardChambers) onBorder += c.vertex
+    val hard = Set[Mesh.Chamber]() ++ subD.hardChambers
+    val onBorder = Set[Mesh.Vertex]() ++ hard.map(_.vertex)
     
     // -- adjust positions of edge centers
-    for (e <- base.edges; val z = ch2ev(e.from.chamber) if !onBorder(z)) {
+    for (e <- base.edges; z = ch2ev(e.from.chamber) if !onBorder(z)) {
       if (z.degree != 4) error("bad new vertex degree in subdivision()")
       z.pos = z.cellChambers.sum(_.s0.vertex.pos) / 4
     }
     
     // -- adjust positions of (copied) original non-border vertices
-    for (n <- 1 to base.numberOfVertices;
-         val v = subD.vertex(n) if !onBorder(v)) {
+    def p0(c: Mesh.Chamber) = c.s0.vertex.pos
+    def p1(c: Mesh.Chamber) = c.s0.s1.s0.vertex.pos
+
+    for (n <- 1 to base.numberOfVertices; v = subD.vertex(n) if !onBorder(v)) {
       val k = v.degree
       val cs = v.cellChambers.toSeq
-      v.pos = (((k - 3) * v.pos
-                + 4 * cs.sum(_.s0.vertex.pos) / k
-                - cs.sum(_.s0.s1.s0.vertex.pos) / k) / k)
+      v.pos = (((k - 3) * v.pos + 4 * cs.sum(p0) / k - cs.sum(p1) / k) / k)
     }
     
     // -- do the same for border vertices
-    val hard = Set[Mesh.Chamber]() ++ subD.hardChambers
     for (v <- onBorder if v.nr <= base.numberOfVertices) {
-      val breaks = v.cellChambers.filter(hard).toSeq
-      if (breaks.size == 2)
-        v.pos =
-          (breaks(0).s0.vertex.pos + breaks(1).s0.vertex.pos + 2 * v.pos) / 4
+      val breaks = v.cellChambers.filter(hard).toSeq.map(_.s0.vertex.pos)
+      if (breaks.size == 2) v.pos = (breaks(0) + breaks(1) + 2 * v.pos) / 4
     }
     
     // -- return the result
