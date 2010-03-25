@@ -4,86 +4,120 @@ import Sums._
 import Vectors._
 
 class SubdivisionSchema(base: Mesh) {
+    private implicit object SVec3Monoid extends Monoid[SparseVector] {
+      def add(x: SparseVector, y: SparseVector) = x + y
+      def unit = new SparseVector()
+    }
+
+    // -- create a sparse vector for each vertex encoding it as a variable
+	private val variables =
+	  Map() ++ base.vertices.map(v => (v -> new SparseVector(v.nr -> 1.0)))
+
+	// -- initialize a mapping from subdivision mesh indices to weight vectors
+	private var weights = Map[Int, SparseVector]()
+ 
     // -- create a new empty mesh
-    val subD = new Mesh
+    val mesh = new Mesh
     
     // -- copy the original vertices, texture vertices and normals
-    for (v <- base.vertices) subD.addVertex(v.pos)
-    for (t <- base.textureVertices) subD.addTextureVertex(t.pos)
-    for (n <- base.normals) subD.addNormal(n.value)
+    for (v <- base.vertices) {
+      val w = mesh.addVertex(v.pos)
+      weights += (w.nr -> variables(v))
+    }
     
     // -- create edge centers
-    val ch2ev = Map[Mesh.Chamber, Mesh.Vertex]() ++ (
+    private val ch2ev = Map() ++ (
       for {
-        e <- base.edges
-        c = e.from.chamber
-        z = subD.addVertex((c.start.pos + c.end.pos) / 2)
-        d <- List(c, c.s0, c.s2, c.s0.s2).elements
+    	c <- base.edgeChambers
+    	z = mesh.addVertex((c.start.pos + c.end.pos) / 2)
+    	d <- List(c, c.s0, c.s2, c.s0.s2).elements
       }
       	yield (d -> z)
     )
     
-    // -- interpolate texture coordinates along vertices
-    var ch2etnr = Map[Mesh.Chamber, Int]()
-    for (c <- base.chambers if !ch2etnr.contains(c)) {
-      val t1 = c.tVertex
-      val t2 = c.s0.tVertex
-      if (t1 != null && t2 != null) {
-        val z = subD.addTextureVertex((t1.pos + t2.pos) / 2)
-        for (d <- List(c, c.s0)) ch2etnr += (d -> z.nr)
-      }
-    }
-    
     // -- create face centers and subdivision faces
     for (f <- base.faces) {
       val n = f.degree
-      val z = subD.addVertex(f.vertices.sum(_.pos) / n).nr
-      val tz =
-        if (f.textureVertices.forall(null !=))
-          subD.addTextureVertex(f.textureVertices.sum(_.pos) / n).nr
-        else 0
+      val z = mesh.addVertex(f.vertices.sum(_.pos) / n).nr
+      weights += (z -> f.vertices.sum(variables) / n)
       for (c <- f.vertexChambers) {
-        val t = c.tVertexNr
-        val n = c.normalNr
-        val g = subD.addFace(
+        val g = mesh.addFace(
           List(c.vertexNr,  ch2ev(c).nr, z, ch2ev(c.s1).nr),
-          List(t, ch2etnr.getOrElse(c, 0), tz, ch2etnr.getOrElse(c.s1, 0)),
-          List(n, n, n, n))
-        g.obj      = subD.obj(f.obj.name)
-        g.material = subD.material(f.material.name)
-        g.group    = subD.group(f.group.name)
+          List(0, 0, 0, 0),
+          List(0, 0, 0, 0))
+        g.obj      = mesh.obj(f.obj.name)
+        g.material = mesh.material(f.material.name)
+        g.group    = mesh.group(f.group.name)
         g.smoothingGroup = f.smoothingGroup
       }
     }
     
     // -- fill holes and flag border vertices
-    subD.fixHoles
-    val hard = Set[Mesh.Chamber]() ++ subD.hardChambers
-    val onBorder = Set[Mesh.Vertex]() ++ hard.map(_.vertex)
+    mesh.fixHoles
+    private val hard = Set() ++ mesh.hardChambers
+    private val onBorder = Set() ++ hard.map(_.vertex)
     
     // -- adjust positions of edge centers
-    for (e <- base.edges; z = ch2ev(e.from.chamber) if !onBorder(z)) {
-      if (z.degree != 4) error("bad new vertex degree in subdivision()")
-      z.pos = z.cellChambers.sum(_.s0.vertex.pos) / 4
+    for (z <- base.edgeChambers.map(ch2ev)) {
+      val verts = if (onBorder(z)) {
+    	if (z.degree != 3) error("bad new vertex degree in subdivision()")
+    	z.cellChambers.filter(hard).map(_.s0.vertex)
+      } else {
+    	if (z.degree != 4) error("bad new vertex degree in subdivision()")
+        z.cellChambers.map(_.s0.vertex)
+      }
+      z.pos = verts.sum(_.pos) / verts.length
+      weights += (z.nr -> verts.sum(v => weights(v.nr)) / verts.length)
     }
     
-    // -- adjust positions of (copied) original non-border vertices
-    def p0(c: Mesh.Chamber) = c.s0.vertex.pos
-    def p1(c: Mesh.Chamber) = c.s0.s1.s0.vertex.pos
+    // -- adjust positions of (copied) original vertices
+    private def w0(c: Mesh.Chamber) = c.s0.vertex
+    private def w1(c: Mesh.Chamber) = c.s0.s1.s0.vertex
 
-    for (n <- 1 to base.numberOfVertices; v = subD.vertex(n) if !onBorder(v)) {
-      val k = v.degree
-      val cs = v.cellChambers.toSeq
-      v.pos = (((k - 3) * v.pos + 4 * cs.sum(p0) / k - cs.sum(p1) / k) / k)
-    }
+    for (v <- 1 to base.numberOfVertices map mesh.vertex)
+      if (onBorder(v)) {
+    	val breaks = v.cellChambers.filter(hard).toSeq.map(_.s0.vertex.pos)
+    	if (breaks.size == 2) v.pos = (breaks(0) + breaks(1) + 2 * v.pos) / 4
+      } else {
+    	val k = v.degree
+    	val cs = v.cellChambers.toSeq
+    	v.pos = (v.pos * (k - 3)
+                 + cs.sum(w0(_).pos) * 4 / k
+                 - cs.sum(w1(_).pos) / k) / k
+    	weights += (v.nr -> (weights(v.nr) * (k - 3)
+                             + cs.sum(v => weights(w0(v).nr)) * 4 / k
+                             - cs.sum(v => weights(w1(v).nr)) / k) / k)
+      }
     
-    // -- do the same for border vertices
-    for (v <- onBorder if v.nr <= base.numberOfVertices) {
-      val breaks = v.cellChambers.filter(hard).toSeq.map(_.s0.vertex.pos)
-      if (breaks.size == 2) v.pos = (breaks(0) + breaks(1) + 2 * v.pos) / 4
-    }
+    // -- update the materials
+    mesh.mtllib ++ base.mtllib
     
-    // -- return the result
-    subD.mtllib ++ base.mtllib
-    subD
+    def weights_for(v: Mesh.Vertex) = weights(v.nr).items
+}
+
+object Subdivision {
+  def main(args : Array[String]) : Unit = {
+    import java.io.FileWriter
+    
+    System.err.println("Reading input mesh...")
+    val src = new Mesh(System.in)
+
+    System.err.println("Processing...")
+    val sub = new SubdivisionSchema(src)
+
+    System.err.println("Writing output mesh...")
+    sub.mesh.write(System.out, "materials")
+
+    System.err.println("Writing weights...")
+    val writer = new FileWriter("weights.txt")
+    for (w <- sub.mesh.vertices) {
+      val weights = sub.weights_for(w).toList
+      writer.write("w %6d %2d" format (w.nr, weights.length))
+      for ((n, f) <- weights) writer.write(" %6d %.8f" format (n, f))
+      writer.write("\n")
+    }
+    writer.close
+    
+    System.err.println("Done.")
+  }
 }

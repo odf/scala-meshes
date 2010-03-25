@@ -674,6 +674,7 @@ class Mesh extends MessageSource {
 
   def numberOfEdges    = _edges.size
   def edges            = _edges.keys
+  def edgeChambers     = _edges.values
   
   def numberOfFaces    = _faces.size
   def faces            = _faces.elements
