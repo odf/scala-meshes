@@ -59,13 +59,10 @@ class SubdivisionSchema(base: Mesh) {
     
     // -- adjust positions of edge centers
     for (z <- base.edgeChambers.map(ch2ev)) {
-      val verts = if (onBorder(z)) {
-    	if (z.degree != 3) error("bad new vertex degree in subdivision()")
+      val verts = if (onBorder(z))
     	z.cellChambers.filter(hard).map(_.s0.vertex)
-      } else {
-    	if (z.degree != 4) error("bad new vertex degree in subdivision()")
+      else
         z.cellChambers.map(_.s0.vertex)
-      }
       weights += (z.nr -> verts.sum(v => weights(v.nr)) / verts.length)
     }
     
@@ -75,8 +72,10 @@ class SubdivisionSchema(base: Mesh) {
 
     for (v <- 1 to base.numberOfVertices map mesh.vertex)
       if (onBorder(v)) {
-    	val breaks = v.cellChambers.filter(hard).toSeq.map(_.s0.vertex.pos)
-    	if (breaks.size == 2) v.pos = (breaks(0) + breaks(1) + 2 * v.pos) / 4
+    	val breaks = v.cellChambers.filter(hard).toSeq.map(_.s0.vertex)
+    	if (breaks.size == 2)
+    	  weights += (v.nr -> (weights(breaks(0).nr) + weights(breaks(1).nr)
+                               + weights(v.nr) * 2) / 4)
       } else {
     	val k = v.degree
     	val cs = v.cellChambers.toSeq
@@ -89,10 +88,9 @@ class SubdivisionSchema(base: Mesh) {
     mesh.mtllib ++ base.mtllib
     
     // -- set vertex positions based on weights
-    for (k <- weights.keySet)
-      mesh.vertex(k).pos =
-        weights(k).items.map(e => base.vertex(e._1).pos * e._2).sum
-    
+    for (v <- mesh.vertices)
+      v.pos = weights_for(v).map(e => base.vertex(e._1).pos * e._2).sum
+   
     def weights_for(v: Mesh.Vertex) = weights(v.nr).items
 }
 
@@ -113,8 +111,9 @@ object Subdivision {
     val writer = new FileWriter("weights.txt")
     for (w <- sub.mesh.vertices) {
       val weights = sub.weights_for(w).toList
-      writer.write("w %6d %2d" format (w.nr, weights.length))
-      for ((n, f) <- weights) writer.write(" %6d %.8f" format (n, f))
+      writer.write("w %d %d" format (w.nr - 1, weights.length))
+      for ((n, f) <- weights) writer.write(" %d" format (n - 1))
+      for ((n, f) <- weights) writer.write(" %.8f" format f)
       writer.write("\n")
     }
     writer.close
