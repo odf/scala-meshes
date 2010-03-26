@@ -66,7 +66,6 @@ class SubdivisionSchema(base: Mesh) {
     	if (z.degree != 4) error("bad new vertex degree in subdivision()")
         z.cellChambers.map(_.s0.vertex)
       }
-      z.pos = verts.sum(_.pos) / verts.length
       weights += (z.nr -> verts.sum(v => weights(v.nr)) / verts.length)
     }
     
@@ -81,9 +80,6 @@ class SubdivisionSchema(base: Mesh) {
       } else {
     	val k = v.degree
     	val cs = v.cellChambers.toSeq
-    	v.pos = (v.pos * (k - 3)
-                 + cs.sum(w0(_).pos) * 4 / k
-                 - cs.sum(w1(_).pos) / k) / k
     	weights += (v.nr -> (weights(v.nr) * (k - 3)
                              + cs.sum(v => weights(w0(v).nr)) * 4 / k
                              - cs.sum(v => weights(w1(v).nr)) / k) / k)
@@ -91,6 +87,11 @@ class SubdivisionSchema(base: Mesh) {
     
     // -- update the materials
     mesh.mtllib ++ base.mtllib
+    
+    // -- set vertex positions based on weights
+    for (k <- weights.keySet)
+      mesh.vertex(k).pos =
+        weights(k).items.map(e => base.vertex(e._1).pos * e._2).sum
     
     def weights_for(v: Mesh.Vertex) = weights(v.nr).items
 }
