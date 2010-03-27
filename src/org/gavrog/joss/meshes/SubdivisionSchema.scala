@@ -144,7 +144,7 @@ object ComputeTransferWeights {
     
     if (split) {
       for ((name, verts) <- verticesByGroup(dst)) {
-        writer.write("g %s\n" format (name))
+        writer.write("actor %s\n" format (name))
         for (n <- 0 to verts.size - 1) {
           val weights = sub.weights_for(map(verts(n).chamber).vertex).toList
           writer.write("w %d %d" format (n, weights.length))
