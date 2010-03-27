@@ -17,6 +17,10 @@
 
 package org.gavrog.joss.meshes
 
+import java.io.OutputStreamWriter
+
+import scala.io.Source
+
 import Sums._
 import Vectors._
 
@@ -111,24 +115,26 @@ class SubdivisionSchema(base: Mesh) {
     def weights_for(v: Mesh.Vertex) = weights(v.nr).items
 }
 
-object Subdivision {
+object ComputeTransferWeights {
   def main(args : Array[String]) : Unit = {
     import java.io.FileWriter
     
-    System.err.println("Reading input mesh...")
-    val src = new Mesh(System.in)
-
-    System.err.println("Processing...")
+    System.err.println("Reading low-poly source mesh...")
+    val src = new Mesh(Source fromFile args(0))
+    System.err.println("Reading high-poly transfer target...")
+    val dst = new Mesh(Source fromFile args(1))
+    
+    System.err.println("Subdividing source to compute weights...")
     val sub = new SubdivisionSchema(src)
 
-    System.err.println("Writing output mesh...")
-    sub.mesh.write(System.out, "materials")
-
+    System.err.println("Matching result to transfer target...")
+    val map = sub.mesh.findMapping(dst)
+    
     System.err.println("Writing weights...")
-    val writer = new FileWriter("weights.txt")
-    for (w <- sub.mesh.vertices) {
-      val weights = sub.weights_for(w).toList
-      writer.write("w %d %d" format (w.nr - 1, weights.length))
+    val writer = new OutputStreamWriter(System.out)
+    for (v <- dst.vertices) {
+      val weights = sub.weights_for(map(v.chamber).vertex).toList
+      writer.write("w %d %d" format (v.nr - 1, weights.length))
       for ((n, f) <- weights) writer.write(" %d" format (n - 1))
       for ((n, f) <- weights) writer.write(" %.8f" format f)
       writer.write("\n")
