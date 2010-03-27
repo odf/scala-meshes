@@ -116,13 +116,22 @@ class SubdivisionSchema(base: Mesh) {
 }
 
 object ComputeTransferWeights {
+  def verticesByGroup(m: Mesh) = Map() ++ m.groups.map(g =>
+    (g.name, {
+      val faces = m.faces.filter(f => f.group == g).toList
+      val verts = Set() ++ faces.flatMap(_.vertices)
+      m.vertices.filter(null !=).filter(verts contains).toList
+    }))
+  
   def main(args : Array[String]) : Unit = {
     import java.io.FileWriter
     
+    val (split, i) = if (args(0) == "-s") (true, 1) else (false, 0)
+
     System.err.println("Reading low-poly source mesh...")
-    val src = new Mesh(Source fromFile args(0))
+    val src = new Mesh(Source fromFile args(i))
     System.err.println("Reading high-poly transfer target...")
-    val dst = new Mesh(Source fromFile args(1))
+    val dst = new Mesh(Source fromFile args(i+1))
     
     System.err.println("Subdividing source to compute weights...")
     val sub = new SubdivisionSchema(src)
@@ -132,13 +141,27 @@ object ComputeTransferWeights {
     
     System.err.println("Writing weights...")
     val writer = new OutputStreamWriter(System.out)
-    for (v <- dst.vertices) {
-      val weights = sub.weights_for(map(v.chamber).vertex).toList
-      writer.write("w %d %d" format (v.nr - 1, weights.length))
-      for ((n, f) <- weights) writer.write(" %d" format (n - 1))
-      for ((n, f) <- weights) writer.write(" %.8f" format f)
-      writer.write("\n")
-    }
+    
+    if (split) {
+      for ((name, verts) <- verticesByGroup(dst)) {
+        writer.write("g %s\n" format (name))
+        for (n <- 0 to verts.size - 1) {
+          val weights = sub.weights_for(map(verts(n).chamber).vertex).toList
+          writer.write("w %d %d" format (n, weights.length))
+          for ((n, f) <- weights) writer.write(" %d" format (n - 1))
+          for ((n, f) <- weights) writer.write(" %.8f" format f)
+          writer.write("\n")
+        }
+      }
+    } else
+      for (v <- dst.vertices) {
+    	val weights = sub.weights_for(map(v.chamber).vertex).toList
+    	writer.write("w %d %d" format (v.nr - 1, weights.length))
+    	for ((n, f) <- weights) writer.write(" %d" format (n - 1))
+    	for ((n, f) <- weights) writer.write(" %.8f" format f)
+    	writer.write("\n")
+      }
+    
     writer.close
     
     System.err.println("Done.")
