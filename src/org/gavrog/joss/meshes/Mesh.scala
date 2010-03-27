@@ -1,5 +1,5 @@
 /*
-   Copyright 2009 Olaf Delgado-Friedrichs
+   Copyright 2010 Olaf Delgado-Friedrichs
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -908,9 +908,10 @@ class Mesh extends MessageSource {
       m
     }
   
-  def withDonorData(donor: Mesh, f: Map[Chamber, Chamber] => boolean) = {
-    val result = clone
-    var originals = Set() ++ result.components
+  def findMapping(donor: Mesh) = {
+    var originals = Set() ++ components
+    var result = Map[Chamber, Chamber]()
+    var bad_components = 0
     
     for (comp <- donor.components) {
       send("Matching donor component with %d chambers..."
@@ -930,18 +931,30 @@ class Mesh extends MessageSource {
             }
           }
         }
-        if (map == null) send("No match found.")
+        if (map == null) {
+          send("No match found.")
+          bad_components += 1
+        }
       } catch {
         case ex: Throwable =>
           send("Error while matching! Skipping this component.\n"
                + ex.getMessage + "\n" + ex.getStackTraceString)
       }
       if (map != null) {
-        send("Match found. Applying donor data...")
-        f(map)
+        send("Match found.")
+        result ++= map
         originals -= image
       }
     }
+    result
+  }
+  
+  def withDonorData(donor: Mesh, f: Map[Chamber, Chamber] => boolean) = {
+    val result = clone
+    send("Computing map...")
+    val map = result.findMapping(donor)
+    send("Applying donor data...")
+    f(map)
     result
   }
   
