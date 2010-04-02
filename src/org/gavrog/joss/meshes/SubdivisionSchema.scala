@@ -22,7 +22,6 @@ import java.io.OutputStreamWriter
 import scala.io.Source
 
 import Sums._
-import Vectors._
 
 class SubdivisionSchema(base: Mesh) {
     private implicit object SVec3Monoid extends Monoid[SparseVector] {
@@ -31,26 +30,29 @@ class SubdivisionSchema(base: Mesh) {
     }
 
     // -- create a sparse vector for each vertex encoding it as a variable
-	private val variables =
-	  Map() ++ base.vertices.map(v => (v -> new SparseVector(v.nr -> 1.0)))
+	private def variable(v: Mesh.Vertex) = new SparseVector(v.nr -> 1.0)
 
 	// -- initialize a mapping from subdivision mesh indices to weight vectors
 	private var weights = Map[Int, SparseVector]()
  
+	// -- computes the average weight vector for a sequence of vertices
+    private def avgWeight(s: Seq[Mesh.Vertex]) =
+      s.map(_.nr).map(weights).sum / s.length
+ 
     // -- create a new empty mesh
     val mesh = new Mesh
     
-    // -- copy the original vertices, texture vertices and normals
-    for (v <- base.vertices) {
-      val w = mesh.addVertex(v.pos)
-      weights += (w.nr -> variables(v))
-    }
+    // -- creates a new vertex
+    def newVertex = mesh.addVertex(0, 0, 0)
     
+	// -- make a copy of each vertex in the original mesh
+    for (v <- base.vertices) weights += (newVertex.nr -> variable(v))
+
     // -- create edge centers
     private val ch2ev = Map() ++ (
       for {
     	c <- base.edgeChambers
-    	z = mesh.addVertex((c.start.pos + c.end.pos) / 2)
+    	z = newVertex
     	d <- List(c, c.s0, c.s2, c.s0.s2).elements
       }
       	yield (d -> z)
@@ -58,14 +60,11 @@ class SubdivisionSchema(base: Mesh) {
     
     // -- create face centers and subdivision faces
     for (f <- base.faces) {
-      val n = f.degree
-      val z = mesh.addVertex(f.vertices.sum(_.pos) / n).nr
-      weights += (z -> f.vertices.sum(variables) / n)
+      val z = newVertex.nr
+      weights += (z -> avgWeight(f.vertices))
       for (c <- f.vertexChambers) {
-        val g = mesh.addFace(
-          List(c.vertexNr,  ch2ev(c).nr, z, ch2ev(c.s1).nr),
-          List(0, 0, 0, 0),
-          List(0, 0, 0, 0))
+        val g = mesh.addFace(List(c.vertexNr,  ch2ev(c).nr, z, ch2ev(c.s1).nr),
+          List(0, 0, 0, 0), List(0, 0, 0, 0))
         g.obj      = mesh.obj(f.obj.name)
         g.material = mesh.material(f.material.name)
         g.group    = mesh.group(f.group.name)
@@ -80,17 +79,12 @@ class SubdivisionSchema(base: Mesh) {
     
     // -- adjust positions of edge centers
     for (z <- base.edgeChambers.map(ch2ev)) {
-      val verts = if (onBorder(z))
-    	z.cellChambers.filter(hard).map(_.s0.vertex)
-      else
-        z.cellChambers.map(_.s0.vertex)
-      weights += (z.nr -> verts.sum(v => weights(v.nr)) / verts.length)
+      val test = if (onBorder(z)) hard else (c: Any) => true
+      val verts = z.cellChambers.filter(test).map(_.s0.vertex)
+      weights += (z.nr -> avgWeight(verts))
     }
     
     // -- adjust positions of (copied) original vertices
-    private def w0(c: Mesh.Chamber) = c.s0.vertex
-    private def w1(c: Mesh.Chamber) = c.s0.s1.s0.vertex
-
     for (v <- 1 to base.numberOfVertices map mesh.vertex)
       if (onBorder(v)) {
     	val breaks = v.cellChambers.filter(hard).toSeq.map(_.s0.vertex)
@@ -101,16 +95,16 @@ class SubdivisionSchema(base: Mesh) {
     	val k = v.degree
     	val cs = v.cellChambers.toSeq
     	weights += (v.nr -> (weights(v.nr) * (k - 3)
-                             + cs.sum(v => weights(w0(v).nr)) * 4 / k
-                             - cs.sum(v => weights(w1(v).nr)) / k) / k)
+                             + avgWeight(cs.map(_.s0.vertex)) * 4
+                             - avgWeight(cs.map(_.s0.s1.s0.vertex))) / k)
       }
     
     // -- update the materials
     mesh.mtllib ++ base.mtllib
     
     // -- set vertex positions based on weights
-    for (v <- mesh.vertices)
-      v.pos = weights_for(v).map(e => base.vertex(e._1).pos * e._2).sum
+    for (v <- mesh.vertices) v.pos =
+      weights_for(v).map(e => base.vertex(e._1).pos * e._2).reduceLeft(_+_)
    
     def weights_for(v: Mesh.Vertex) = weights(v.nr).items
 }
