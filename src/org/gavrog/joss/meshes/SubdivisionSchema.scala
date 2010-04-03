@@ -17,19 +17,8 @@
 
 package org.gavrog.joss.meshes
 
-import java.io.OutputStreamWriter
-
-import scala.io.Source
-
-import Sums._
-
 class SubdivisionSchema(base: Mesh) {
-    private implicit object SVec3Monoid extends Monoid[SparseVector] {
-      def add(x: SparseVector, y: SparseVector) = x + y
-      def unit = new SparseVector()
-    }
-
-    // -- create a sparse vector for each vertex encoding it as a variable
+    // -- creates a sparse vector for a given vertex encoding it as a variable
 	private def variable(v: Mesh.Vertex) = new SparseVector(v.nr -> 1.0)
 
 	// -- initialize a mapping from subdivision mesh indices to weight vectors
@@ -37,13 +26,13 @@ class SubdivisionSchema(base: Mesh) {
  
 	// -- computes the average weight vector for a sequence of vertices
     private def avgWeight(s: Seq[Mesh.Vertex]) =
-      s.map(_.nr).map(weights).sum / s.length
+      s.map(_.nr).map(weights).reduceLeft(_+_) / s.length
  
     // -- create a new empty mesh
     val mesh = new Mesh
     
     // -- creates a new vertex
-    def newVertex = mesh.addVertex(0, 0, 0)
+    private def newVertex = mesh.addVertex(0, 0, 0)
     
 	// -- make a copy of each vertex in the original mesh
     for (v <- base.vertices) weights += (newVertex.nr -> variable(v))
@@ -89,8 +78,7 @@ class SubdivisionSchema(base: Mesh) {
       if (onBorder(v)) {
     	val breaks = v.cellChambers.filter(hard).toSeq.map(_.s0.vertex)
     	if (breaks.size == 2)
-    	  weights += (v.nr -> (weights(breaks(0).nr) + weights(breaks(1).nr)
-                               + weights(v.nr) * 2) / 4)
+    	  weights += (v.nr -> avgWeight(breaks ++ List(v, v)))
       } else {
     	val k = v.degree
     	val cs = v.cellChambers.toSeq
@@ -118,7 +106,8 @@ object ComputeTransferWeights {
     }))
   
   def main(args : Array[String]) : Unit = {
-    import java.io.FileWriter
+    import java.io.OutputStreamWriter
+    import scala.io.Source
     
     val (split, i) = if (args(0) == "-s") (true, 1) else (false, 0)
 
@@ -136,25 +125,21 @@ object ComputeTransferWeights {
     System.err.println("Writing weights...")
     val writer = new OutputStreamWriter(System.out)
     
-    if (split) {
+    def writeWeights(n: Int, v: Mesh.Vertex) {
+      val weights = sub.weights_for(map(v.chamber).vertex).toList.sort(_<_)
+      writer.write("w %d %d" format (n, weights.length))
+      for ((n, f) <- weights) writer.write(" %d" format (n - 1))
+      for ((n, f) <- weights) writer.write(" %.8f" format f)
+      writer.write("\n")
+    }
+    
+    if (split)
       for ((name, verts) <- verticesByGroup(dst)) {
         writer.write("actor %s\n" format (name))
-        for (n <- 0 to verts.size - 1) {
-          val weights = sub.weights_for(map(verts(n).chamber).vertex).toList
-          writer.write("w %d %d" format (n, weights.length))
-          for ((n, f) <- weights) writer.write(" %d" format (n - 1))
-          for ((n, f) <- weights) writer.write(" %.8f" format f)
-          writer.write("\n")
-        }
+        for (n <- 0 to verts.size - 1) writeWeights(n, verts(n))
       }
-    } else
-      for (v <- dst.vertices) {
-    	val weights = sub.weights_for(map(v.chamber).vertex).toList
-    	writer.write("w %d %d" format (v.nr - 1, weights.length))
-    	for ((n, f) <- weights) writer.write(" %d" format (n - 1))
-    	for ((n, f) <- weights) writer.write(" %.8f" format f)
-    	writer.write("\n")
-      }
+    else
+      for (v <- dst.vertices) writeWeights(v.nr - 1, v)
     
     writer.close
     
