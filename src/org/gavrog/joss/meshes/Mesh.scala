@@ -483,6 +483,22 @@ class Mesh extends MessageSource {
   }
 
   def write(target: Writer, basename: String) {
+    import scala.collection.immutable.TreeMap
+    
+    type A = (Object, Group, Material, Int)
+    
+    implicit def augment(value: Int) = new {
+      def orIfZero(next: => Int) = if (value != 0) value else next
+    }
+    
+    implicit def asOrdered(x: A) = new Ordered[A] {
+      def compare(other: A) =
+    	x._1.name.compare(other._1.name) orIfZero
+    	x._2.name.compare(other._2.name) orIfZero
+    	x._3.name.compare(other._3.name) orIfZero
+    	x._4 - other._4
+    }	
+    
     val writer = new BufferedWriter(target)
     
     if (basename != null) {
@@ -501,18 +517,36 @@ class Mesh extends MessageSource {
     for (v <- textureVertices)
       writer.write("vt %.8f %.8f\n" format (v.x, v.y))
     
-    val parts = new LinkedHashMap[(Object, Group, Material, Int), Buffer[Face]]
+    var parts = new TreeMap[A, List[Face]]()
+
     var useSmoothing = false
     for (f <- faces) {
-      parts.getOrElseUpdate((f.obj, f.group, f.material, f.smoothingGroup),
-                            new ArrayBuffer[Face]) += f
+      val key = (f.obj, f.group, f.material, f.smoothingGroup)
+      val list = parts.getOrElse(key, List[Face]())
+      parts = parts.update(key, f :: list)
       useSmoothing ||= (f.smoothingGroup != 0)
     }
+    var lastObject: Object = null
+    var lastGroup: Group = null
+    var lastMaterial: Material = null
+    var lastSmoothingGroup: Int = 0
     for (((obj, group, material, smoothingGroup), faces) <- parts) {
-      writer.write("o %s\n" format obj.name)
-      writer.write("g %s\n" format group.name)
-      writer.write("usemtl %s\n" format material.name)
-      if (useSmoothing) writer.write("s %d\n" format smoothingGroup)
+      if (obj != null && obj != lastObject) {
+    	writer.write("o %s\n" format obj.name)
+    	lastObject = obj
+      }
+      if (group != null && group != lastGroup) {
+    	writer.write("g %s\n" format group.name)
+    	lastGroup = group
+      }
+      if (material != null && material != lastMaterial) {
+    	writer.write("usemtl %s\n" format material.name)
+    	lastMaterial = material
+      }
+      if (useSmoothing && smoothingGroup != lastSmoothingGroup) {
+        writer.write("s %d\n" format smoothingGroup)
+        lastSmoothingGroup = smoothingGroup
+      }
       for (f <- faces) writer.write("f %s\n" format f.formatVertices)
     }
     writer.flush()
