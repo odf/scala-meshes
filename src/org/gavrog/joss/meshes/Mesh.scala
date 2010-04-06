@@ -403,7 +403,6 @@ class Mesh extends MessageSource {
     var group   : Group    = null
     var material: Material = null
     var smoothingGroup = 0
-    val mtllib = new HashMap[String, String]
     
     for(raw <- source.getLines; line = raw.trim
         if line.length > 0 && !line.startsWith("#")) {
@@ -485,28 +484,14 @@ class Mesh extends MessageSource {
   def write(target: Writer, basename: String) {
     import scala.collection.immutable.TreeMap
     
-    type A = (Object, Group, Material, Int)
-    
-    implicit def augment(value: Int) = new {
-      def orIfZero(next: => Int) = if (value != 0) value else next
-    }
-    
-    implicit def asOrdered(x: A) = new Ordered[A] {
-      def compare(other: A) =
-    	x._1.name.compare(other._1.name) orIfZero
-    	x._2.name.compare(other._2.name) orIfZero
-    	x._3.name.compare(other._3.name) orIfZero
-    	x._4 - other._4
-    }	
-    
     val writer = new BufferedWriter(target)
     
-    if (basename != null) {
-      val mtl = new BufferedWriter(new FileWriter("%s.mtl" format basename))
-      for ((name, definition) <- mtllib)
-        mtl.write("newmtl %s\n%s\n" format (name, definition))
-      mtl.flush
-      mtl.close
+    if (basename != null && mtllib.size > 0) {
+      new BufferedWriter(new FileWriter("%s.mtl" format basename)) {
+    	mtllib.map("newmtl %s\n%s\n".format(_)).foreach(write)
+    	flush
+    	close
+      }
       writer.write("mtllib %s.mtl\n" format basename)
     }
     
@@ -517,38 +502,39 @@ class Mesh extends MessageSource {
     for (v <- textureVertices)
       writer.write("vt %.8f %.8f\n" format (v.x, v.y))
     
-    var parts = new TreeMap[A, List[Face]]()
-
-    var useSmoothing = false
-    for (f <- faces) {
-      val key = (f.obj, f.group, f.material, f.smoothingGroup)
-      val list = parts.getOrElse(key, List[Face]())
-      parts = parts.update(key, f :: list)
-      useSmoothing ||= (f.smoothingGroup != 0)
+    case class Attr(obj: Object, grp: Group, mat: Material, sgr: Int)
+    extends Ordered[Attr] {
+      implicit def augment(value: Int) = new {
+    	def orIfZero(next: => Int) = if (value != 0) value else next
+      }
+    
+      def compare(other: Attr) =
+    	obj.name.compare(other.obj.name) orIfZero
+    	grp.name.compare(other.grp.name) orIfZero
+    	mat.name.compare(other.mat.name) orIfZero
+    	sgr - other.sgr
     }
-    var lastObject: Object = null
-    var lastGroup: Group = null
-    var lastMaterial: Material = null
-    var lastSmoothingGroup: Int = 0
-    for (((obj, group, material, smoothingGroup), faces) <- parts) {
-      if (obj != null && obj != lastObject) {
-    	writer.write("o %s\n" format obj.name)
-    	lastObject = obj
-      }
-      if (group != null && group != lastGroup) {
-    	writer.write("g %s\n" format group.name)
-    	lastGroup = group
-      }
-      if (material != null && material != lastMaterial) {
-    	writer.write("usemtl %s\n" format material.name)
-    	lastMaterial = material
-      }
-      if (useSmoothing && smoothingGroup != lastSmoothingGroup) {
-        writer.write("s %d\n" format smoothingGroup)
-        lastSmoothingGroup = smoothingGroup
-      }
+    
+    val parts = faces.foldLeft(new TreeMap[Attr, List[Face]]())((m, f) => {
+      val key = Attr(f.obj, f.group, f.material, f.smoothingGroup)
+      m.update(key, f :: m.getOrElse(key, List[Face]()))
+    })
+    
+    parts.foldLeft(Attr(null, null, null, 0))(
+      (last: Attr, part: (Attr, Seq[Face])) =>
+    {
+      val (next, faces) = part
+      if (next.obj != null && next.obj != last.obj)
+        writer.write("o %s\n" format next.obj.name)
+      if (next.grp != null && next.grp != last.grp)
+    	writer.write("g %s\n" format next.grp.name)
+      if (next.mat != null && next.mat != last.mat)
+    	writer.write("usemtl %s\n" format next.mat.name)
+      if (next.sgr != 0 && next.sgr != last.sgr)
+        writer.write("s %d\n" format next.sgr)
       for (f <- faces) writer.write("f %s\n" format f.formatVertices)
-    }
+      next
+    })
     writer.flush()
   }
   
