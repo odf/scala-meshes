@@ -502,12 +502,13 @@ class Mesh extends MessageSource {
     for (v <- textureVertices)
       writer.write("vt %.8f %.8f\n" format (v.x, v.y))
     
+    case class XInt(n: Int) {
+      def orIfZero(next: => Int) = if (n != 0) n else next
+    }
+    implicit def augment(value: Int) = XInt(value)
+    
     case class Attr(obj: Object, grp: Group, mat: Material, sgr: Int)
     extends Ordered[Attr] {
-      implicit def augment(value: Int) = new {
-    	def orIfZero(next: => Int) = if (value != 0) value else next
-      }
-    
       def compare(other: Attr) =
     	obj.name.compare(other.obj.name) orIfZero
     	grp.name.compare(other.grp.name) orIfZero
@@ -532,7 +533,7 @@ class Mesh extends MessageSource {
     	writer.write("usemtl %s\n" format next.mat.name)
       if (next.sgr != 0 && next.sgr != last.sgr)
         writer.write("s %d\n" format next.sgr)
-      for (f <- faces) writer.write("f %s\n" format f.formatVertices)
+      for (f <- faces.reverse) writer.write("f %s\n" format f.formatVertices)
       next
     })
     writer.flush()
