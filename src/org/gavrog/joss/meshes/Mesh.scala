@@ -501,6 +501,8 @@ class Mesh extends MessageSource {
       writer.write("vn %.8f %.8f %.8f\n" format (v.x, v.y, v.z))
     for (v <- textureVertices)
       writer.write("vt %.8f %.8f\n" format (v.x, v.y))
+    materials.map(_.name).toList.sort(_<_).foreach(s =>
+      writer.write("usemtl %s\n" format s))
     
     case class XInt(n: Int) {
       def orIfZero(next: => Int) = if (n != 0) n else next
