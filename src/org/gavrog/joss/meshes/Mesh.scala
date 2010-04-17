@@ -635,7 +635,10 @@ class Mesh extends MessageSource {
   def vertex(n: Int)  =
     if (n > 0 && n <= numberOfVertices) _vertices(n - 1) else null
   
-  def clearTextureVertices = _texverts.clear
+  def clearTextureVertices {
+    _texverts.clear
+    for (ch <- chambers) ch.tVertex = null
+  }
 
   private class MeshTextureVertex(x: Double, y: Double) extends TextureVertex {
     val mesh = Mesh.this
@@ -664,6 +667,42 @@ class Mesh extends MessageSource {
   def textureVertices         = _texverts.elements
   def textureVertex(n: Int)  =
     if (n > 0 && n <= numberOfTextureVertices) _texverts(n - 1) else null
+  
+  def consolidateTextureVertices {
+    class Partition[T](parent: Map[T, T]) {
+      def this() = this(Map[T, T]())
+      
+      def find(x: T): T = parent.get(x) match {
+        case Some(y) if y != x => find(y)
+        case _ => x
+      }
+      
+      def union(x: T, y: T) = {
+        val xr = find(x)
+        val yr = find(y)
+        if (xr == yr) this else new Partition(parent + (xr -> yr))
+      }
+    }
+    
+    val withSameTVertex = (new Partition[Chamber]() /: chambers)((p, ch) => {
+      val t1 = ch.tVertex
+      val t2 = ch.s2.tVertex
+      if (t1 != null && t2 != null && (t1.pos - t2.pos).norm <= 1e-6)
+    	p.union(ch, ch.s1).union(ch, ch.s2)
+      else
+    	p.union(ch, ch.s1)
+    })
+    
+    val usedBy = (Map[TextureVertex, List[Chamber]]() /: chambers)((m, ch) => {
+      val t = withSameTVertex.find(ch).tVertex
+      if (t == null) m else m + (t -> (ch :: m.getOrElse(t, List())))
+    })
+    clearTextureVertices
+    for ((t, chambers) <- usedBy) {
+      val vt = addTextureVertex(t.pos)
+      for (ch <- chambers) ch.tVertex = vt
+    }
+  }
   
   def clearNormals = _normals.clear
   
