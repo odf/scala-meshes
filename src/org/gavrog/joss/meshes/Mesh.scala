@@ -1053,8 +1053,8 @@ class Mesh extends MessageSource {
       true
     })
   
-  def withUVsFrom(donor: Mesh) =
-    withDonorData(donor, map => {
+  def withUVsFrom(donor: Mesh) = {
+    val result = withDonorData(donor, map => {
       val tMap = new HashMap[TextureVertex, TextureVertex]
       for ((c, d) <- map) {
         val t = c.tVertex
@@ -1065,6 +1065,9 @@ class Mesh extends MessageSource {
       }
       true
     })
+    result.consolidateTextureVertices
+    result
+  }
   
   def subdivision = {
     // -- create a new empty mesh
