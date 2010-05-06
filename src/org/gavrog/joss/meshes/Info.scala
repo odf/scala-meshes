@@ -31,7 +31,7 @@ object Info {
     println("  %5d components"    format parts.size)
     for (p <- parts) {
       print("       %5d chambers" format p.chambers.size)
-      print(", %3d symmetries"    format Mesh.allMatches(p, p).size)
+      print(", %3d symmetries"    format Mesh.allMatches(p, p).toList.size)
       val c = p.coarseningClassifications
       print(", %1d coarsenings"   format c.size)
       print(" (%1d strict)"       format c.count(_.isStrict))
@@ -41,7 +41,7 @@ object Info {
     println("  %5d charts"        format charts.size)
     for (p <- charts) {
       print("       %5d chambers" format p.chambers.size)
-      print(", %3d symmetries"    format Mesh.allMatches(p, p).size)
+      print(", %3d symmetries"    format Mesh.allMatches(p, p).toList.size)
       println
     }
     println("  %5d vertices"          format mesh.numberOfVertices)
