@@ -1,32 +1,29 @@
 package org.gavrog.joss.meshes
 
 class SparseVector(entries: (Int, Double)*) {
-  import scala.collection.mutable.Map
+  val items = Map() ++ entries.filter(_._2 != 0.0)
 
-  private var default: Double = 0.0
-  private[this] val storage = Map[Int, Double]() 
-
-  for (p <- entries if p._2 != 0.0) this(p._1) = p._2
+  def this(e: Iterable[(Int, Double)]) = this(e.toList :_*)
   
   def this(a: SparseVector, f: Double => Double) =
-	this(a.activeDomain.toList.map(i => (i, f(a(i)))) :_*)
+    this(a.support.map(i => (i, f(a(i)))))
   
   def this(a: SparseVector, b: SparseVector, f: (Double, Double) => Double) =
-	this((a.activeDomain ++ b.activeDomain).toList
-         .map(i => (i, f(a(i), b(i)))) :_*)
+	this((a.support ++ b.support).map(i => (i, f(a(i), b(i)))))
   
-  def apply(key: Int) = storage.getOrElse(key, default)
+  def apply(key: Int) = items.getOrElse(key, 0.0)
 
-  def items = storage.keys.map(i => (i, storage(i)))
+  def support = items.keySet
   
-  def activeDomain = storage.keySet
-  
-  def update(key: Int, value: Double) { storage(key) = value }
-
   def unary_- =	new SparseVector(this, x => -x)
   def *(f: Double) = new SparseVector(this, _ * f)
   def /(f: Double) = new SparseVector(this, _ / f)
 
   def +(that: SparseVector) = new SparseVector(this, that, _+_)
   def -(that: SparseVector) = new SparseVector(this, that, _-_)
+
+  override def toString() = items.mkString("SparseVector(", ", ", ")")
+  override def hashCode() = items.hashCode
+  override def equals(other: Any) =	other.isInstanceOf[SparseVector] &&
+    items.equals(other.asInstanceOf[SparseVector].items)
 }
