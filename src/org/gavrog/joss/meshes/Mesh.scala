@@ -256,19 +256,14 @@ object Mesh {
     while (queue.length > 0) {
       val (d1, d2) = queue.dequeue
       for ((e1, e2) <- neighbors(d1).zip(neighbors(d2))) {
-        if ((e1 == null) != (e2 == null)) return None
-        if (e1 != null) {
-	        if (seen1(e1) != seen2(e2)) return None
-	        if (e1.cell.getClass != e2.cell.getClass) return None
-	        if (seen1(e1)) {
-	          if (map(e1) != e2) return None
-	        } else {
-	          queue += (e1, e2)
-	          seen1 += e1
-	          seen2 += e2
-	          map(e1) = e2
-	        }
-         }
+        if (e1 != null && e2 != null && e1.cell.getClass == e2.cell.getClass
+        	&& !seen1(e1) && !seen2(e2))
+        {
+          queue += (e1, e2)
+          seen1 += e1
+          seen2 += e2
+          map(e1) = e2
+        }
       }
     }
     Some(map)
@@ -292,10 +287,10 @@ object Mesh {
     maps: Iterator[Map[Chamber, Chamber]], v: Chamber => T) =
   {
     var best: Map[Chamber, Chamber] = null
-    var dist = Double.MaxValue
+    var dist = (0, Double.MaxValue)
     
     for (map <- maps) {
-      val d = distance(map, v)
+      val d = (-map.size, distance(map, v))
       if (d < dist) {
         dist = d
         best = map
@@ -306,23 +301,20 @@ object Mesh {
 
   //TODO avoid code duplication in the following
   def allMatches(c1: Component, c2: Component): Iterator[Map[Chamber, Chamber]] = {
-    if (c1.chambers.size != c2.chambers.size) Iterator.empty
-    else {
-      val degree = new HashMap[Vertex, Int]
-      val count = new HashMap[Int, Int]
-      for (v <- c1.vertices) {
-        degree(v) = v.degree
-        count(degree(v)) = count.getOrElse(degree(v), 0) + 1
-      }
-      for (v <- c2.vertices) degree(v) = v.degree
-
-      val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
-
-      val ch1 = c1.chambers.find(ch => degree(ch.vertex) == bestD).get
-      for { ch2 <- c2.chambers.elements if degree(ch2.vertex) == bestD
-    	    map <- matchTopologies(ch1, ch2, false).elements }
-        yield map
+	val degree = new HashMap[Vertex, Int]
+	val count = new HashMap[Int, Int]
+	for (v <- c1.vertices) {
+      degree(v) = v.degree
+      count(degree(v)) = count.getOrElse(degree(v), 0) + 1
     }
+    for (v <- c2.vertices) degree(v) = v.degree
+
+    val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
+
+    val ch1 = c1.chambers.find(ch => degree(ch.vertex) == bestD).get
+    for { ch2 <- c2.chambers.elements if degree(ch2.vertex) == bestD
+       map <- matchTopologies(ch1, ch2, false).elements }
+      yield map
   }
   
   def allMatches(c1: Chart, c2: Chart): Iterator[Map[Chamber, Chamber]] = {
@@ -994,29 +986,40 @@ class Mesh extends MessageSource {
           }
         }
         if (map == null) {
-          send("No match found.")
+          send("  No match found.")
           bad_components += 1
         }
       } catch {
         case ex: Throwable =>
-          send("Error while matching! Skipping this component.\n"
+          send("  Error while matching! Skipping this component.\n"
                + ex.getMessage + "\n" + ex.getStackTraceString)
       }
-      if (map != null) {
-        send("Match found.")
+      if (map != null && map.size > 0) {
+        if (map.size == comp.chambers.size)
+          send("  Full match found.")
+        else
+        	send("  Partial match found with %d chambers mapped."
+        			format map.size)
         result ++= map
         originals -= image
-      }
+      } else
+        send("  No match found.")
     }
     result
   }
   
   def withDonorData(donor: Mesh, f: Map[Chamber, Chamber] => boolean) = {
     val result = clone
+    listenTo(result)
+    deafTo(this)
+    reactions += {
+      case MessageSent(src, txt) => send("  " + txt)
+    }
     send("Computing map...")
     val map = result.findMapping(donor)
     send("Applying donor data...")
     f(map)
+    deafTo(result)
     result
   }
   
