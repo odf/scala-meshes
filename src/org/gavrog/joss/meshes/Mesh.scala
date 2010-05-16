@@ -966,8 +966,9 @@ class Mesh extends MessageSource {
     var originals = Set() ++ components
     var result = Map[Chamber, Chamber]()
     var bad_components = 0
+    def cmp(a: Component, b: Component) = a.chambers.size > b.chambers.size
     
-    for (comp <- donor.components) {
+    for (comp <- donor.components.toList.sort(cmp)) {
       send("Matching donor component with %d chambers..."
            format (comp.chambers.size))
       var dist = Double.MaxValue
