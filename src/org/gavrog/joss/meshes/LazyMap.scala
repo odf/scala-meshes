@@ -1,5 +1,5 @@
 /*
-   Copyright 2009 Olaf Delgado-Friedrichs
+   Copyright 2010 Olaf Delgado-Friedrichs
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -19,12 +19,13 @@ package org.gavrog.joss.meshes
 
 import scala.collection.mutable.HashMap
 
-class LazyMap[A, B](f: A => B) extends scala.collection.Map[A, B] with Proxy {
+class LazyMap[A, B](f: A => B) extends HashMap[A, B] with Proxy {
   private val cache = new HashMap[A, B]
     
-  def self      = cache
-  def size      = cache.size
-  def elements  = cache.elements
-  def get(x: A) = Some(cache.getOrElseUpdate(x, f(x)))
+  def self               = cache
+  override def size      = cache.size
+  override def elements  = cache.iterator
+  override def iterator  = cache.iterator
+  override def get(x: A) = Some(cache.getOrElseUpdate(x, f(x)))
 }
   

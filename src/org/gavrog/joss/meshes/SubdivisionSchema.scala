@@ -17,6 +17,8 @@
 
 package org.gavrog.joss.meshes
 
+import scala.collection.mutable.ArrayBuffer
+
 class SubdivisionSchema(base: Mesh) {
     // -- creates a sparse vector for a given vertex encoding it as a variable
 	private def variable(v: Mesh.Vertex) = new SparseVector(v.nr -> 1.0)
@@ -42,7 +44,7 @@ class SubdivisionSchema(base: Mesh) {
       for {
     	c <- base.edgeChambers
     	z = newVertex
-    	d <- List(c, c.s0, c.s2, c.s0.s2).elements
+    	d <- List(c, c.s0, c.s2, c.s0.s2)
       }
       	yield (d -> z)
     )
@@ -52,8 +54,10 @@ class SubdivisionSchema(base: Mesh) {
       val z = newVertex.nr
       weights += (z -> avgWeight(f.vertices))
       for (c <- f.vertexChambers) {
-        val g = mesh.addFace(List(c.vertexNr,  ch2ev(c).nr, z, ch2ev(c.s1).nr),
-          List(0, 0, 0, 0), List(0, 0, 0, 0))
+        val g =	mesh.addFace(
+        		ArrayBuffer(c.vertexNr,  ch2ev(c).nr, z, ch2ev(c.s1).nr),
+        		ArrayBuffer(0, 0, 0, 0),
+        		ArrayBuffer(0, 0, 0, 0))
         g.obj      = mesh.obj(f.obj.name)
         g.material = mesh.material(f.material.name)
         g.group    = mesh.group(f.group.name)
@@ -126,7 +130,7 @@ object ComputeTransferWeights {
     val writer = new OutputStreamWriter(System.out)
     
     def writeWeights(n: Int, v: Mesh.Vertex) {
-      val weights = sub.weights_for(map(v.chamber).vertex).toList.sort(_<_)
+      val weights = sub.weights_for(map(v.chamber).vertex).toSeq //.sort(_<_)
       writer.write("w %d %d" format (n, weights.length))
       for ((n, f) <- weights) writer.write(" %d" format (n - 1))
       for ((n, f) <- weights) writer.write(" %.8f" format f)

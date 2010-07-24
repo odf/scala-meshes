@@ -1,5 +1,5 @@
 /*
-   Copyright 2009 Olaf Delgado-Friedrichs
+   Copyright 2010 Olaf Delgado-Friedrichs
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ object Vectors {
     def /(f: Double) = Vec2(x / f, y / f)
     
     def *(that: Vec2) = this.x * that.x + this.y * that.y
-    def norm = Math.sqrt(this * this)
+    def norm = math.sqrt(this * this)
     def || = norm
     def unit = this / this.||
 
@@ -53,7 +53,7 @@ object Vectors {
     def x(that: Vec3) : Vec3 = Vec3(this.y * that.z - this.z * that.y,
                                     this.z * that.x - this.x * that.z,
                                     this.x * that.y - this.y * that.x)
-    def norm = Math.sqrt(this * this)
+    def norm = math.sqrt(this * this)
     def || = norm
     def unit = this / this.||
 

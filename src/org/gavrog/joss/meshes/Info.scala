@@ -1,5 +1,5 @@
 /*
-   Copyright 2009 Olaf Delgado-Friedrichs
+   Copyright 2010 Olaf Delgado-Friedrichs
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -26,29 +26,31 @@ object Info {
     val mesh = if (args.length > 0) new Mesh(Source fromFile args(0))
                else new Mesh(System.in)
 
-    val parts = mesh.components.toList.sort(_.chambers.size < _.chambers.size)
+    val parts = mesh.components.sortBy(_.chambers.size)
     println
     println("  %5d components"    format parts.size)
     for (p <- parts) {
       print("       %5d chambers" format p.chambers.size)
-      print(", %3d symmetries"    format Mesh.allMatches(p, p).toList.size)
+      print(", %3d symmetries"    format
+    		Mesh.allMatches(p, p).count(p.chambers.size == _.size))
       val c = p.coarseningClassifications
       print(", %1d coarsenings"   format c.size)
       print(" (%1d strict)"       format c.count(_.isStrict))
       println
     }
-    val charts = mesh.charts.toList.sort(_.chambers.size < _.chambers.size)
+    val charts = mesh.charts.sortBy(_.chambers.size)
     println("  %5d charts"        format charts.size)
     for (p <- charts) {
       print("       %5d chambers" format p.chambers.size)
-      print(", %3d symmetries"    format Mesh.allMatches(p, p).toList.size)
+      print(", %3d symmetries"    format
+    		Mesh.allMatches(p, p).count(p.chambers.size == _.size))
       println
     }
     println("  %5d vertices"          format mesh.numberOfVertices)
     println("  %5d edges"             format mesh.numberOfEdges)
     println("  %5d faces"             format mesh.numberOfFaces)
     println("  %5d holes"             format mesh.numberOfHoles)
-    println("  %5d border edges"      format mesh.holes.sum(_.degree))
+    println("  %5d border edges"      format mesh.holes.map(_.degree).sum)
     println("  %5d normals"           format mesh.numberOfNormals)
     println("  %5d texture vertices"  format mesh.numberOfTextureVertices)
     println("  %5d groups"            format mesh.numberOfGroups)
@@ -58,8 +60,8 @@ object Info {
     println("  First vertex:         " + mesh.vertices.next)
     println("  First texture vertex: " + mesh.textureVertices.next)
     println("  First normal:         " + mesh.normals.next)
-    println("  First group:          " + mesh.groups.next)
-    println("  First material:       " + mesh.materials.next)
+    println("  First group:          " + mesh.groups.head)
+    println("  First material:       " + mesh.materials.head)
     println("  First face:           " + mesh.faces.next)
     
     println

@@ -1,5 +1,5 @@
 /*
-   Copyright 2009 Olaf Delgado-Friedrichs
+   Copyright 2010 Olaf Delgado-Friedrichs
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@
 
 package org.gavrog.joss.meshes
 
-import collection.mutable.Queue
-import io.Source
+import scala.collection.mutable.{Queue, ArrayBuffer}
+import scala.io.Source
 
-import Math.{abs, atan2, Pi}
-import System.{in, out, err}
+import scala.math.{abs, atan2, Pi}
+import java.lang.System.{in, out, err}
 
 import Mesh.{Chamber, Face, TextureVertex}
 import Vectors.{Vec2, Vec3}
@@ -42,7 +42,7 @@ object CylinderMap {
     })
 
     for (f <- src.faces) {
-      val cs = f.textureVertices.toSeq
+      val cs = ArrayBuffer() ++ f.textureVertices
       val vs = cs.map(vMap(_).nr)
       val vt = cs.map(tMap(_).nr)
       val vn = cs.map(v => 0)

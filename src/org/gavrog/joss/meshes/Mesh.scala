@@ -108,12 +108,12 @@ object Mesh {
     def faces        = cellChambers.filter(_.tVertex == this).map(_.cell)
     def onBorder     = cellChambers.exists(_.onTextureBorder)
 
-    def degree = cellChambers.sum(c =>
+    def degree = cellChambers.map(c =>
       if (c.tVertex == this || c.s2.tVertex == this)
         if (c.tVertex == c.s2.tVertex && c.s0.tVertex != c.s2.s0.tVertex) 2
         else 1
       else 0
-    )
+    ).reduceLeft(_+_)
 
     def x = pos.x
     def y = pos.y
@@ -207,7 +207,7 @@ object Mesh {
   case class Component(mesh: Mesh, chambers: Set[Chamber]) {
     lazy val vertices = new HashSet[Vertex] ++ chambers.map (_.vertex)
     lazy val faces = new HashSet[Face] ++ chambers.map(_.face).filter(null !=)
-    def coarseningClassifications = faces.elements.next.vertices
+    def coarseningClassifications = faces.iterator.next.vertices
       .map(mesh.classifyForCoarsening(_)).filter(null !=)
   }
   
@@ -235,7 +235,7 @@ object Mesh {
       n
     }
 
-    def cost: Int = wasFaceCenter.sum(cost(_))
+    def cost: Int = wasFaceCenter.map(cost(_)).reduceLeft(_+_)
     def isStrict = cost == 0
   }
 
@@ -247,7 +247,7 @@ object Mesh {
     val map   = new HashMap[Chamber, Chamber]
     seen1 += ch1
     seen2 += ch2
-    queue += (ch1, ch2)
+    queue += ((ch1, ch2))
     map(ch1) = ch2
     
     def neighbors(c: Chamber) =
@@ -259,7 +259,7 @@ object Mesh {
         if (e1 != null && e2 != null && e1.cell.getClass == e2.cell.getClass
         	&& !seen1(e1) && !seen2(e2))
         {
-          queue += (e1, e2)
+          queue += ((e1, e2))
           seen1 += e1
           seen2 += e2
           map(e1) = e2
@@ -291,7 +291,7 @@ object Mesh {
     
     for (map <- maps) {
       val d = (-map.size, distance(map, v))
-      if (d < dist) {
+      if ((d: Ordered[(Int, Double)]) < dist) {
         dist = d
         best = map
       }
@@ -309,11 +309,11 @@ object Mesh {
     }
     for (v <- c2.vertices) degree(v) = v.degree
 
-    val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
+    val bestD = count.keys.toSeq.sortBy(count).head
 
     val ch1 = c1.chambers.find(ch => degree(ch.vertex) == bestD).get
-    for { ch2 <- c2.chambers.elements if degree(ch2.vertex) == bestD
-       map <- matchTopologies(ch1, ch2, false).elements }
+    for { ch2 <- c2.chambers.iterator if degree(ch2.vertex) == bestD
+       map <- matchTopologies(ch1, ch2, false).iterator }
       yield map
   }
   
@@ -328,11 +328,11 @@ object Mesh {
       }
       for (t <- c2.vertices) degree(t) = if (t.onBorder) t.degree else 0
     
-      val bestD = count.keys.toList.sort((a, b) => count(a) < count(b))(0)
+      val bestD = count.keys.toSeq.sortBy(count).head
 
       val ch1 = c1.chambers.find(ch => degree(ch.tVertex) == bestD).get
-      for { ch2 <- c2.chambers.elements if degree(ch2.tVertex) == bestD
-            map <- matchTopologies(ch1, ch2, true).elements }
+      for { ch2 <- c2.chambers.iterator if degree(ch2.tVertex) == bestD
+            map <- matchTopologies(ch1, ch2, true).iterator }
       	yield map
     }
   }
@@ -457,7 +457,7 @@ class Mesh extends MessageSource {
         if (obj == null) obj = this.obj("_default")
         if (group == null) group = this.group("_default")
         if (material == null) material = this.material("_default")
-        faces += (fc, ft, fn, obj, group, material, smoothingGroup)
+        faces += ((fc, ft, fn, obj, group, material, smoothingGroup))
       }
       case _ => println("?? " + cmd + "(" + pars.mkString(", ") + ")")
       }
@@ -493,7 +493,7 @@ class Mesh extends MessageSource {
       writer.write("vn %.8f %.8f %.8f\n" format (v.x, v.y, v.z))
     for (v <- textureVertices)
       writer.write("vt %.8f %.8f\n" format (v.x, v.y))
-    materials.map(_.name).toList.sort(_<_).foreach(s =>
+    materials.map(_.name).toSeq.sorted.foreach(s =>
       writer.write("usemtl %s\n" format s))
     
     case class XInt(n: Int) {
@@ -512,11 +512,11 @@ class Mesh extends MessageSource {
     
     val parts = faces.foldLeft(new TreeMap[Attr, List[Face]]())((m, f) => {
       val key = Attr(f.obj, f.group, f.material, f.smoothingGroup)
-      m.update(key, f :: m.getOrElse(key, List[Face]()))
+      m ++ List((key, f :: m.getOrElse(key, List[Face]())))
     })
     
     parts.foldLeft(Attr(null, null, null, 0))(
-      (last: Attr, part: (Attr, Seq[Face])) =>
+      (last: Attr, part: (Attr, List[Face])) =>
     {
       val (next, faces) = part
       if (next.obj != null && next.obj != last.obj)
@@ -567,10 +567,10 @@ class Mesh extends MessageSource {
     def s2 = _s2.getOrElse(this, null)
     
     def setOperator(s: Map[Chamber, Chamber], ch: Chamber) {
-      if (s.contains(this)) s.removeKey(s(this))
-      if (ch == null) s.removeKey(this)
+      if (s.contains(this)) s.remove(s(this))
+      if (ch == null) s.remove(this)
       else {
-    	if (s.contains(ch)) s.removeKey(s(ch))
+    	if (s.contains(ch)) s.remove(s(ch))
     	s(this) = ch
     	s(ch) = this
       }
@@ -588,7 +588,7 @@ class Mesh extends MessageSource {
   private def addChamber(v: Vertex, f: Cell) = new MeshChamber(v, f)
   
   def numberOfChambers = _chambers.size
-  def chambers         = _chambers.elements
+  def chambers         = _chambers.iterator
   def hardChambers     = {
     val smoothing =
       !chambers.forall(c => c.face == null || c.face.smoothingGroup == 0)
@@ -623,7 +623,7 @@ class Mesh extends MessageSource {
     new MeshVertex(x, y, z)
   
   def numberOfVertices = _vertices.size
-  def vertices         = _vertices.elements
+  def vertices         = _vertices.iterator
   def vertex(n: Int)  =
     if (n > 0 && n <= numberOfVertices) _vertices(n - 1) else null
   
@@ -656,7 +656,7 @@ class Mesh extends MessageSource {
     new MeshTextureVertex(x, y)
   
   def numberOfTextureVertices = _texverts.size
-  def textureVertices         = _texverts.elements
+  def textureVertices         = _texverts.iterator
   def textureVertex(n: Int)  =
     if (n > 0 && n <= numberOfTextureVertices) _texverts(n - 1) else null
   
@@ -722,7 +722,7 @@ class Mesh extends MessageSource {
     new MeshNormal(x, y, z)
   
   def numberOfNormals  = _normals.size
-  def normals          = _normals.elements
+  def normals          = _normals.iterator
   def normal(n: Int)  =
     if (n > 0 && n <= numberOfNormals) _normals(n - 1) else null
 
@@ -731,10 +731,10 @@ class Mesh extends MessageSource {
   def edgeChambers     = _edges.values
   
   def numberOfFaces    = _faces.size
-  def faces            = _faces.elements
+  def faces            = _faces.iterator
 
   def numberOfHoles    = _holes.size
-  def holes            = _holes.elements
+  def holes            = _holes.iterator
 
   def obj(name: String) = _objects.get(name) match {
     case Some(o) => o
@@ -849,11 +849,12 @@ class Mesh extends MessageSource {
   
   def computeNormals = {
     clearNormals
-    val normal4face = new LazyMap((f: Cell) =>
-      f.vertexChambers.sum(c => c.vertex.pos x c.nextAtFace.vertex.pos).unit)
+    val normal4face = new LazyMap((f: Cell) => f.vertexChambers
+    		.map(c => c.vertex.pos x c.nextAtFace.vertex.pos)
+    		.reduceLeft(_+_).unit)
     for (v <- vertices) {
-      val n = addNormal(v.cellChambers.sum(c =>
-        if (c.cell.isInstanceOf[Face]) normal4face(c.cell) else zero3).unit)
+      val n = addNormal(v.cellChambers.map(c => if (c.cell.isInstanceOf[Face])
+    	  normal4face(c.cell) else zero3).reduceLeft(_+_).unit)
       for (c <- v.cellChambers; d <- List(c, c.s1)) d.normal = n
     }
   }
@@ -919,16 +920,16 @@ class Mesh extends MessageSource {
   }
   
   def splitByGroup = {
-    val parts = new HashMap[String, Buffer[Face]]
+    val parts = new HashMap[String, Seq[Face]]
     for (g <- _groups.values) parts(g.name) = new ArrayBuffer[Face]
-    for (f <- _faces) parts(f.group.name) += f
+    for (f <- _faces) parts(f.group.name) ++= List(f)
     split(parts)
   }
   
   def splitByMaterial = {
-    val parts = new HashMap[String, Buffer[Face]]
+    val parts = new HashMap[String, Seq[Face]]
     for (m <- _mats.values) parts(m.name) = new ArrayBuffer[Face]
-    for (f <- _faces) parts(f.material.name) += f
+    for (f <- _faces) parts(f.material.name) ++= List(f)
     split(parts)
   }
   
@@ -949,7 +950,7 @@ class Mesh extends MessageSource {
         normals.filter(nSet contains).map(n => (n.nr, m.addNormal(n.value).nr))
       }
       for (f <- faces) {
-        val cs = f.vertexChambers.toSeq
+        val cs = ArrayBuffer() ++ f.vertexChambers
         val vs = cs.map(c => vMap(c.vertexNr))
         val vt = cs.map(c => tMap(c.tVertexNr))
         val vn = cs.map(c => nMap(c.normalNr))
@@ -966,9 +967,8 @@ class Mesh extends MessageSource {
     var originals = Set() ++ components
     var result = Map[Chamber, Chamber]()
     var bad_components = 0
-    def cmp(a: Component, b: Component) = a.chambers.size > b.chambers.size
     
-    for (comp <- donor.components.toList.sort(cmp)) {
+    for (comp <- donor.components.sortBy(_.chambers.size).reverse) {
       send("Matching donor component with %d chambers..."
            format (comp.chambers.size))
       var dist = Double.MaxValue
@@ -1009,7 +1009,7 @@ class Mesh extends MessageSource {
     result
   }
   
-  def withDonorData(donor: Mesh, f: Map[Chamber, Chamber] => boolean) = {
+  def withDonorData(donor: Mesh, f: Map[Chamber, Chamber] => Boolean) = {
     val result = clone
     listenTo(result)
     deafTo(this)
@@ -1103,18 +1103,18 @@ class Mesh extends MessageSource {
     // -- create face centers and subdivision faces
     for (f <- faces) {
       val n = f.degree
-      val z = subD.addVertex(f.vertices.sum(_.pos) / n).nr
+      val z = subD.addVertex(f.vertices.map(_.pos).reduceLeft(_+_) / n).nr
       val tz =
         if (f.textureVertices.forall(null !=))
-          subD.addTextureVertex(f.textureVertices.sum(_.pos) / n).nr
+          subD.addTextureVertex(f.textureVertices.map(_.pos).reduceLeft(_+_) / n).nr
         else 0
       for (c <- f.vertexChambers) {
         val t = c.tVertexNr
         val n = c.normalNr
         val g = subD.addFace(
-          List(c.vertexNr,  ch2ev(c).nr, z, ch2ev(c.s1).nr),
-          List(t, ch2etnr.getOrElse(c, 0), tz, ch2etnr.getOrElse(c.s1, 0)),
-          List(n, n, n, n))
+          ArrayBuffer(c.vertexNr,  ch2ev(c).nr, z, ch2ev(c.s1).nr),
+          ArrayBuffer(t, ch2etnr.getOrElse(c, 0), tz, ch2etnr.getOrElse(c.s1, 0)),
+          ArrayBuffer(n, n, n, n))
         g.obj      = subD.obj(f.obj.name)
         g.material = subD.material(f.material.name)
         g.group    = subD.group(f.group.name)
@@ -1131,7 +1131,7 @@ class Mesh extends MessageSource {
     for (c <- _edges.values; val z = ch2ev(c) if !onBorder(z)) {
       val z = ch2ev(c)
       if (z.degree != 4) error("bad new vertex degree in subdivision()")
-      z.pos = z.cellChambers.sum(_.s0.vertex.pos) / 4
+      z.pos = z.cellChambers.map(_.s0.vertex.pos).reduceLeft(_+_) / 4
     }
     
     // -- adjust positions of (copied) original non-border vertices
@@ -1139,8 +1139,8 @@ class Mesh extends MessageSource {
       val k = v.degree
       val cs = v.cellChambers.toSeq
       v.pos = (((k - 3) * v.pos
-                + 4 * cs.sum(_.s0.vertex.pos) / k
-                - cs.sum(_.s0.s1.s0.vertex.pos) / k) / k)
+                + 4 * cs.map(_.s0.vertex.pos).reduceLeft(_+_) / k
+                - cs.map(_.s0.s1.s0.vertex.pos).reduceLeft(_+_) / k) / k)
     }
     
     // -- do the same for border vertices
@@ -1256,8 +1256,9 @@ class Mesh extends MessageSource {
           m.addVertex(v.pos)
       } else if (k != 3) {
         done += v
-        m.addVertex((v.pos * k + (cs.sum(_.s0.s1.s0.vertex.pos)
-                                  - 4 * cs.sum(_.s0.vertex.pos)) / k) / (k - 3))
+        m.addVertex((v.pos * k
+        		+ (cs.map(_.s0.s1.s0.vertex.pos).reduceLeft(_+_)
+        		- 4 * cs.map(_.s0.vertex.pos).reduceLeft(_+_)) / k) / (k - 3))
       } else {
         m.addVertex(v.pos)
       }
@@ -1273,11 +1274,14 @@ class Mesh extends MessageSource {
     // -- create the faces of the new mesh along with necessary vertices etc.
     send("  making faces...")
     for (p <- components if vc(p) != null; f <- vc(p).wasFaceCenter) {
-      val cs = f.cellChambers.toSeq
+      val cs = f.cellChambers
       val vs = cs.map(c => mapV(c.s0.s1.s0.vertexNr))
       val vt = cs.map(c => mapT(c.s0.s1.s0.tVertexNr))
       val vn = cs.map(c => mapN(c.s0.s1.s0.normalNr))
-      val face = m.addFace(vs.reverse, vt.reverse, vn.reverse)
+      val face = m.addFace(
+    		  ArrayBuffer() ++ vs.reverse,
+    		  ArrayBuffer() ++ vt.reverse,
+    		  ArrayBuffer() ++ vn.reverse)
       
       val objects   = new HashMap[Object, Int]
       val groups    = new HashMap[Group, Int]
@@ -1303,10 +1307,10 @@ class Mesh extends MessageSource {
       if (materials.size > 1)
         messages += ("Inconsistent materials: %s" format materials)
       if (sgroups.size > 1) messages += "Inconsistent smoothing groups."
-      face.obj = objects.keys.next
-      face.group = groups.keys.next
-      face.material = materials.keys.next
-      face.smoothingGroup = sgroups.keys.next
+      face.obj = objects.keys.head
+      face.group = groups.keys.head
+      face.material = materials.keys.head
+      face.smoothingGroup = sgroups.keys.head
     }
     
     // -- print out the accumulated warning messages
