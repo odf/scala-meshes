@@ -1,4 +1,5 @@
 /bin
 /.manager
+/.idea
 *~
 /.scala_dependencies
