@@ -274,23 +274,24 @@ object Mesh {
   {
     val verts = new HashSet[(T, T)]
     for ((c, d) <- map) verts += ((v(c), v(d)))
-    
+
     var dist: Double = 0
     for ((v, w) <- verts) {
       val (dx, dy, dz) = (w.x - v.x, w.y - v.y, w.z - v.z)
       dist += dx * dx + dy * dy + dz * dz
     }
-    dist
+    val (c, d) = map.first
+    (c.mesh.numberOfChambers + d.mesh.numberOfChambers - 2 * map.size, dist)
   }
   
   def closest[T <: { def x: Double; def y: Double; def z: Double }](
     maps: Iterator[Map[Chamber, Chamber]], v: Chamber => T) =
   {
     var best: Map[Chamber, Chamber] = null
-    var dist = (0, Double.MaxValue)
+    var dist = (Int.MaxValue, Double.MaxValue)
     
     for (map <- maps) {
-      val d = (-map.size, distance(map, v))
+      val d = distance(map, v)
       if ((d: Ordered[(Int, Double)]) < dist) {
         dist = d
         best = map
@@ -971,7 +972,7 @@ class Mesh extends MessageSource {
     for (comp <- donor.components.sortBy(_.chambers.size).reverse) {
       send("Matching donor component with %d chambers..."
            format (comp.chambers.size))
-      var dist = Double.MaxValue
+      var dist = (Int.MaxValue, Double.MaxValue)
       var map: Map[Chamber, Chamber] = null
       var image: Component = null
       try {
@@ -979,7 +980,7 @@ class Mesh extends MessageSource {
           val candidate = closest(allMatches(comp, c), _.vertex)
           if (candidate != null) {
             val d = distance(candidate, _.vertex)
-            if (d < dist) {
+            if ((d: Ordered[(Int, Double)]) < dist) {
               dist = d
               map = candidate
               image = c
