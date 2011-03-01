@@ -662,8 +662,8 @@ class Mesh extends MessageSource {
     if (n > 0 && n <= numberOfTextureVertices) _texverts(n - 1) else null
   
   def consolidateTextureVertices {
-    class Partition[T](parent: Map[T, T]) {
-      def this() = this(Map[T, T]())
+    class Partition[T](parent: scala.collection.immutable.Map[T, T]) {
+      def this() = this(scala.collection.immutable.Map[T, T]())
       
       def find(x: T): T = parent.get(x) match {
         case Some(y) if y != x => find(y)
@@ -676,21 +676,26 @@ class Mesh extends MessageSource {
         if (xr == yr) this else new Partition(parent + (xr -> yr))
       }
     }
-    
+
+    send("Finding equivalence classes...")
     val withSameTVertex = (new Partition[Chamber]() /: chambers)((p, ch) => {
       val t1 = ch.tVertex
       val t2 = ch.s2.tVertex
-      if (t1 != null && t2 != null && (t1.pos - t2.pos).norm <= 1e-6)
-    	p.union(ch, ch.s1).union(ch, ch.s2)
-      else
-    	p.union(ch, ch.s1)
+      if (t1 != null && t2 != null && (t1.pos - t2.pos).norm <= 1e-6) {
+      	p.union(ch, ch.s1).union(ch, ch.s2)
+      } else {
+      	p.union(ch, ch.s1)
+      }
     })
-    
-    val usedBy = (Map[TextureVertex, List[Chamber]]() /: chambers)((m, ch) => {
+
+    send("Ordering by vertex...")
+    val usedBy = (scala.collection.immutable.Map[TextureVertex, List[Chamber]]() /: chambers)((m, ch) => {
       val t = withSameTVertex.find(ch).tVertex
       if (t == null) m else m + (t -> (ch :: m.getOrElse(t, List())))
     })
+    send("Removing existing texture vertices...")
     clearTextureVertices
+    send("Creating new texture vertices...")
     for ((t, chambers) <- usedBy) {
       val vt = addTextureVertex(t.pos)
       for (ch <- chambers) ch.tVertex = vt
@@ -1022,6 +1027,7 @@ class Mesh extends MessageSource {
     send("Applying donor data...")
     f(map)
     deafTo(result)
+    send("Done.")
     result
   }
   
@@ -1070,7 +1076,10 @@ class Mesh extends MessageSource {
       }
       true
     })
+    send("Consolidationg texture vertices...")
+    listenTo(result)
     result.consolidateTextureVertices
+    deafTo(result)
     result
   }
   
